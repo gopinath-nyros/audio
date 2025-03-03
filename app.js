@@ -1,94 +1,63 @@
 const express = require('express');
-const ytdl = require('ytdl-core');
-const fs = require('fs');
+const bodyParser = require('body-parser');
+const youtubedl = require('youtube-dl-exec');
 const path = require('path');
-const app = express();
-const PORT = process.env.PORT || 3000;
+const fs = require('fs');
+const ffmpeg = require("@ffmpeg-installer/ffmpeg"); 
 
-// Create uploads directory if it doesn't exist
-const uploadsDir = path.join(__dirname, 'uploads');
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir);
-}
+// Initialize app
+const app = express();
+const PORT = 3000;
 
 // Middleware to parse JSON body
-app.use(express.json());
+app.use(bodyParser.json());
 
-// Endpoint to download YouTube video and convert to audio
-app.get('/download', async (req, res) => {
-  try {
-    const {url} = req.body;
-        console.log(url);
-        
-    // Validate YouTube URL
-    if (!url || !ytdl.validateURL(url)) {
-      return res.status(400).json({ error: 'Invalid YouTube URL' });
+// Create downloads folder if not exists
+const downloadFolder = path.join(__dirname, 'downloads');
+if (!fs.existsSync(downloadFolder)) {
+    fs.mkdirSync(downloadFolder);
+}
+
+// Path to ffmpeg (adjust this if needed)
+// const ffmpegPath = process.env.FFMPEG_PATH || 'ffmpeg';  // Use global ffmpeg if available
+const ffmpegPath = ffmpeg.path
+
+// POST /download endpoint
+app.post('/download', async (req, res) => {
+    const { url } = req.body;
+
+    if (!url || (!url.includes('youtube.com') && !url.includes('youtu.be'))) {
+        return res.status(400).json({ error: 'Invalid YouTube URL' });
     }
-    console.log("PASS");
-    
-    // Get video info to create a good filename
-    const options = {
-      requestOptions: {
-        headers: {
-          // Add a user agent to mimic a regular browser request
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-          // Adding cookies might help avoid the bot detection
-          'Cookie': 'CONSENT=YES+; Path=/',
-        }
-      }
-    };
-    
-    const info = await ytdl.getInfo(url, options);
-    const videoTitle = info.videoDetails.title.replace(/[^\w\s]/gi, ''); // Remove special chars
-    
-    // Create a unique filename
-    const timestamp = Date.now();
-    const filename = `${videoTitle}-${timestamp}.mp3`;
-    const filePath = path.join(uploadsDir, filename);
-    
-    // Download and convert to audio with the same headers
-    ytdl(url, {
-      quality: 'highestaudio',
-      filter: 'audioonly',
-      requestOptions: options.requestOptions
-    })
-      .pipe(fs.createWriteStream(filePath))
-      .on('finish', () => {
-        const relativePath = `/uploads/${filename}`;
-        res.json({ 
-          success: true, 
-          message: 'Audio downloaded successfully',
-          filename: filename,
-          path: relativePath,
-          fullPath: filePath
+
+    const fileName = `audio-${Date.now()}.mp3`;
+    const outputPath = path.join(downloadFolder, fileName);
+
+    try {
+        await youtubedl(url, {
+            extractAudio: true,
+            audioFormat: 'mp3',
+            output: outputPath,
+            ffmpegLocation: ffmpegPath,  // This fixes the error!
+            quiet: true,
         });
-      })
-      .on('error', (error) => {
-        console.error('Error during download:', error);
-        res.status(500).json({ error: 'Failed to download and convert video' });
-      });
-      
-  } catch (error) {
-    console.error('Error processing request:', error);
-    res.status(500).json({ 
-      error: 'Internal server error', 
-      message: error.message,
-      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
-    });
-  }
+
+        return res.json({
+            message: 'Download complete',
+            filePath: `/downloads/${fileName}`,
+        });
+
+    } catch (error) {
+        console.error('Download failed:', error);
+        return res.status(500).json({ error: 'Failed to download audio' });
+    }
 });
 
-// Serve static files from uploads directory
-app.use('/uploads', express.static(uploadsDir));
+// Serve static files from downloads folder so files can be accessed directly
+app.use('/downloads', express.static(downloadFolder));
 
-// Health check endpoint
-app.get('/', (req, res) => {
-  res.status(200).send('Server is running!');
-});
-
-// Start the server
+// Start server
 app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
+    console.log(`✅ Server running at http://localhost:${PORT}`);
+    console.log(`⚙️ Using ffmpeg from: ${ffmpegPath}`);
 });
-
-module.exports = app;
