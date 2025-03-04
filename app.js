@@ -4,6 +4,7 @@ const youtubedl = require('youtube-dl-exec');
 const path = require('path');
 const fs = require('fs');
 const ffmpeg = require("@ffmpeg-installer/ffmpeg"); 
+const cookiesPath = path.join(__dirname, 'cookies.txt');  // Path to your cookies.txt
 
 // Initialize app
 const app = express();
@@ -40,6 +41,7 @@ app.post('/download', async (req, res) => {
             output: outputPath,
             ffmpegLocation: ffmpegPath,  // This fixes the error!
             quiet: true,
+            cookies: cookiesPath 
         });
 
         return res.json({
