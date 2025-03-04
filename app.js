@@ -46,6 +46,7 @@ app.post('/download', async (req, res) => {
 
         return res.json({
             message: 'Download complete',
+            outputPath,
             filePath: `/downloads/${fileName}`,
         });
 
