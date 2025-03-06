@@ -277,12 +277,13 @@ app.post("/download", async (req, res) => {
       output: outputPath,
       ffmpegLocation: ffmpegPath,
       quiet: true,
-      dumpSingleJson: true,
-      noCheckCertificates: true,
-      addHeader: ["referer:youtube.com", "user-agent:googlebot"],
-      noWarnings: true,
-      preferFreeFormats: true,
-      cookies: cookiesPath,
+    //   dumpSingleJson: true,
+    //   noCheckCertificates: true,
+    //   addHeader: ["referer:youtube.com", "user-agent:googlebot"],
+    //   noWarnings: true,
+    //   preferFreeFormats: true,
+      //   cookies: cookiesPath,
+      cookiesFromBrowser: "chrome",
     });
 
     return res.json({
