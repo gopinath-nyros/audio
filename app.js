@@ -262,12 +262,7 @@ app.post("/download", async (req, res) => {
   }
 
   try {
-    // Check if cookies need refreshing
-    // if (await areCookiesExpired()) {
-
-    //   await refreshCookies();
-    // }
-
+   
     const fileName = `audio-${Date.now()}.mp3`;
     const outputPath = path.join(downloadFolder, fileName);
 
@@ -277,8 +272,8 @@ app.post("/download", async (req, res) => {
       output: outputPath,
       ffmpegLocation: ffmpegPath,
       quiet: true,
-    //   cookiesFromBrowser: "chrome",
-    cookies: cookiesPath,
+      //   cookiesFromBrowser: "chrome",
+      cookies: cookiesPath,
     });
 
     return res.json({
