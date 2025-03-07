@@ -1,65 +1,88 @@
-const express = require("express");
-const bodyParser = require("body-parser");
-const youtubedl = require("youtube-dl-exec");
-const path = require("path");
-const fs = require("fs");
-const ffmpeg = require("@ffmpeg-installer/ffmpeg");
-const cookiesPath = path.join(__dirname, "cookies.txt"); // Path to your cookies.txt
+const express = require('express');
+const ytdl = require('ytdl-core');
+const ffmpeg = require('fluent-ffmpeg');
+const fs = require('fs');
+const path = require('path');
+// Add this line to import ffmpeg-static
+const ffmpegPath = require('ffmpeg-static');
 
-// Initialize app
+// Set the ffmpeg path explicitly
+ffmpeg.setFfmpegPath(ffmpegPath);
+
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 
-// Middleware to parse JSON body
-app.use(bodyParser.json());
+// For parsing JSON bodies
+app.use(express.json());
+// For parsing URL encoded bodies
+app.use(express.urlencoded({ extended: true }));
 
-// Create downloads folder if not exists
-const downloadFolder = path.join(__dirname, "downloads");
-if (!fs.existsSync(downloadFolder)) {
-  fs.mkdirSync(downloadFolder);
+// Create downloads directory if it doesn't exist
+const downloadsDir = path.join(__dirname, 'downloads');
+if (!fs.existsSync(downloadsDir)) {
+  fs.mkdirSync(downloadsDir);
 }
 
-// Path to ffmpeg (adjust this if needed)
-// const ffmpegPath = process.env.FFMPEG_PATH || 'ffmpeg';  // Use global ffmpeg if available
-const ffmpegPath = ffmpeg.path;
-
-// POST /download endpoint
-app.post("/download", async (req, res) => {
-  const { url } = req.body;
-
-  if (!url || (!url.includes("youtube.com") && !url.includes("youtu.be"))) {
-    return res.status(400).json({ error: "Invalid YouTube URL" });
-  }
-
-  const fileName = `audio-${Date.now()}.mp3`;
-  const outputPath = path.join(downloadFolder, fileName);
-
+app.post('/download', async (req, res) => {
   try {
-    await youtubedl(url, {
-      extractAudio: true,
-      audioFormat: "mp3",
-      output: outputPath,
-      ffmpegLocation: ffmpegPath, // This fixes the error!
-      quiet: true,
-      cookies: cookiesPath,
+    const { url, format = 'mp3' } = req.body;
+    
+    if (!url) {
+      return res.status(400).json({ error: 'YouTube URL is required' });
+    }
+    
+    // Validate YouTube URL
+    if (!ytdl.validateURL(url)) {
+      return res.status(400).json({ error: 'Invalid YouTube URL' });
+    }
+    
+    // Get video info
+    const info = await ytdl.getInfo(url);
+    const videoTitle = info.videoDetails.title.replace(/[^\w\s]/gi, '_');
+    const outputPath = path.join(downloadsDir, `${videoTitle}.${format}`);
+    
+    // Download audio only
+    const audioStream = ytdl(url, {
+      quality: 'highestaudio',
+      filter: 'audioonly'
     });
-
-    return res.json({
-      message: "Download complete",
-      outputPath,
-      filePath: `/downloads/${fileName}`,
-    });
+    
+    // Convert to desired format using ffmpeg
+    ffmpeg(audioStream)
+      .audioBitrate(128)
+      .format(format)
+      .on('error', (err) => {
+        console.error('FFmpeg error:', err);
+        return res.status(500).json({ error: 'Conversion failed' });
+      })
+      .on('end', () => {
+        return res.json({
+          success: true,
+          message: 'Audio downloaded successfully',
+          filename: `${videoTitle}.${format}`,
+          path: outputPath
+        });
+      })
+      .save(outputPath);
+      
   } catch (error) {
-    console.error("Download failed:", error);
-    return res.status(500).json({ error: "Failed to download audio" });
+    console.error('Error:', error);
+    res.status(500).json({ error: 'Failed to download audio' });
   }
 });
 
-// Serve static files from downloads folder so files can be accessed directly
-app.use("/downloads", express.static(downloadFolder));
+// Optional: Endpoint to serve downloaded files
+app.get('/downloads/:filename', (req, res) => {
+  const filename = req.params.filename;
+  const filePath = path.join(downloadsDir, filename);
+  
+  if (fs.existsSync(filePath)) {
+    res.download(filePath);
+  } else {
+    res.status(404).json({ error: 'File not found' });
+  }
+});
 
-// Start server
 app.listen(PORT, () => {
-  console.log(`✅ Server running at http://localhost:${PORT}`);
-  console.log(`⚙️ Using ffmpeg from: ${ffmpegPath}`);
+  console.log(`Server running on port ${PORT}`);
 });
